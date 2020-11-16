@@ -1,13 +1,14 @@
 package main
 
 import (
+	"ChatService/src/api"
 	"ChatService/src/chat"
 	"fmt"
+	"net/http"
 	"time"
 )
 
-func main() {
-	fmt.Println("Main")
+func test() {
 
 	exit := make(chan bool)
 	go func() {
@@ -33,6 +34,14 @@ func main() {
 	<-exit
 	time.Sleep(1 * time.Second)
 	fmt.Println(">>end")
-	//chat.Chat()
-	//rabbitmq.Test()
+}
+
+func main() {
+	fmt.Println("Main")
+
+	server := http.Server{
+		Addr: "127.0.0.1:8080",
+	}
+	http.HandleFunc("/match", api.ChatMatch)
+	server.ListenAndServe()
 }

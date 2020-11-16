@@ -1,7 +1,5 @@
 package data
 
-import "github.com/gorilla/websocket"
-
 // User 用户结构
 type User struct {
 	ID       int      `json:"id"`
@@ -21,15 +19,6 @@ type Data struct {
 	Time    int    `json:"time"`
 	Type    string `json:"type"`
 	Content string `json:"content"`
-}
-
-// Connection 连接信息，房间
-type Connection struct {
-	Ws    *websocket.Conn
-	WsID  string
-	Users [2]User
-	Sc    chan []byte // 用于储存发送数据的chan
-	Data  *Data       // 当前正要发送的数据
 }
 
 // WaitUser 正在等待用户
