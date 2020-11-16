@@ -40,7 +40,8 @@ type WaitUser struct {
 
 // MqUser RabbitMQ结构
 type MqUser struct {
-	ID      int `json:"id"`      // userID
-	MatchID int `json:"matchid"` // matchID
-	Type    int `json:"type"`    // 1:被匹配到 -1:匹配被取消
+	ID      int    `json:"id"`      // userID
+	MatchID int    `json:"matchid"` // matchID
+	WsID    string `json:"wsid"`    // webscoket id
+	Type    int    `json:"type"`    // 1:被匹配到 -1:匹配被取消
 }

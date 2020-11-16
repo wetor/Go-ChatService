@@ -8,6 +8,7 @@ import (
 
 func main() {
 	fmt.Println("Main")
+
 	exit := make(chan bool)
 	go func() {
 		time.Sleep(1 * time.Second)
@@ -16,11 +17,13 @@ func main() {
 	}()
 	go func() {
 		time.Sleep(2 * time.Second)
+		//chat.Cancel(3)
+		time.Sleep(1 * time.Second)
 		fmt.Println(">>开始匹配1")
 		chat.Match(1)
 	}()
 	go func() {
-		time.Sleep(3 * time.Second)
+		time.Sleep(4 * time.Second)
 		fmt.Println(">>开始匹配2")
 		chat.Match(2)
 		exit <- true
