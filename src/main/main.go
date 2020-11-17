@@ -42,6 +42,10 @@ func main() {
 	server := http.Server{
 		Addr: "127.0.0.1:8080",
 	}
-	http.HandleFunc("/match", api.ChatMatch)
+	http.HandleFunc("/chat/match", api.Match)
+	http.HandleFunc("/chat/cancel", api.Cancel)
+	http.HandleFunc("/chat", api.Chat)
+	http.HandleFunc("/chat/report", api.Report)
+	http.HandleFunc("/chat/webscoket/", api.Webscoket) // /chat/webscoket/{wsid:string}
 	server.ListenAndServe()
 }

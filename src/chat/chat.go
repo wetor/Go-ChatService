@@ -23,11 +23,7 @@ type Connection struct {
 	Data  *data.Data  // 当前正要发送的数据
 }
 
-// WaitPool 等待用户数组
-var WaitPool map[int]*data.WaitUser
-
-// Room 连接信息数组
-var Room map[string]*Connection
+// --------对象---------
 
 // Rabbitmq 实例
 var Rabbitmq *rabbitmq.RabbitMQ
@@ -35,24 +31,35 @@ var Rabbitmq *rabbitmq.RabbitMQ
 // wsid生成器
 var flake *sonyflake.Sonyflake
 
-// wsidMap key:user_id value:wsid
-var wsidMap map[int]string
-
 // Wu WebScoket.Upgrader
 var Wu *websocket.Upgrader
+
+// --------储存---------
+
+// WaitPool 等待用户数组【可存redis】
+var WaitPool map[int]*data.WaitUser
+
+// Room 连接信息数组【可存redis】
+var Room map[string]*Connection
+
+// wsidMap key:user_id value:wsid【可存redis】
+var wsidMap map[int]string
+
+// --------锁---------
 
 // lock 同步锁，防止同时操作上面变量
 var lock sync.Mutex
 
 func init() {
 	fmt.Println("chat init")
-	WaitPool = make(map[int]*data.WaitUser)
-	Room = make(map[string]*Connection)
 	Rabbitmq = rabbitmq.NewRabbitMQ("chat")
 	flake = sonyflake.NewSonyflake(sonyflake.Settings{})
+	Wu = &websocket.Upgrader{ReadBufferSize: 512, WriteBufferSize: 512, CheckOrigin: func(r *http.Request) bool { return true }}
+
+	WaitPool = make(map[int]*data.WaitUser)
+	Room = make(map[string]*Connection)
 	wsidMap = make(map[int]string)
 
-	Wu = &websocket.Upgrader{ReadBufferSize: 512, WriteBufferSize: 512, CheckOrigin: func(r *http.Request) bool { return true }}
 }
 
 // sort 排序WaitPool
@@ -60,7 +67,7 @@ func sort() {
 
 }
 
-// getWsid 通过双方的uid取得唯一的wsid
+// getWsid 取得唯一的wsid，并使用双方id建立映射表
 func getWsid(idA int, idB int) string {
 	id, _ := flake.NextID()
 	wsid := fmt.Sprintf("%x", id)
@@ -125,7 +132,7 @@ func Match(id int) (int, string) {
 
 	go func() { // 超时计时
 		time.Sleep(time.Second * 10) // 10s
-		jsonByte, _ := json.Marshal(data.MqUser{ID: id, Type: 0})
+		jsonByte, _ := json.Marshal(data.MqUser{ID: id, Type: -2})
 		Rabbitmq.PublishPub(string(jsonByte)) // 发送广播，id 匹配超时
 	}()
 	lock.Lock()                                        //上锁
@@ -146,8 +153,8 @@ func Match(id int) (int, string) {
 					wait <- recv.MatchID // 被他人匹配到
 				} else if recv.Type == -1 {
 					wait <- -1 // 匹配被取消
-				} else if recv.Type == 0 {
-					wait <- 0 // 匹配超时
+				} else if recv.Type == -2 {
+					wait <- -2 // 匹配超时
 				}
 				break
 			}
@@ -158,7 +165,7 @@ func Match(id int) (int, string) {
 	if matchID == -1 {
 		fmt.Printf("%d 等待结束，匹配被取消\n", id)
 		return -2, "cancel" //返回602取消响应
-	} else if matchID == 0 {
+	} else if matchID == -2 {
 		fmt.Printf("%d 等待结束，匹配超时\n", id)
 		return -1, "timeout" //返回601超时响应
 	}
@@ -177,7 +184,7 @@ func Cancel(id int) int {
 			delete(WaitPool, waitID) // 从等待队列中删除
 			jsonByte, _ := json.Marshal(data.MqUser{ID: waitID, Type: -1})
 			Rabbitmq.PublishPub(string(jsonByte)) // 发送广播，取消匹配waitID
-			return 0
+			return 0                              // 匹配取消
 		}
 	}
 
@@ -195,7 +202,7 @@ func Cancel(id int) int {
 		delete(wsidMap, Room[wsid].Users[0].ID)
 		delete(wsidMap, Room[wsid].Users[1].ID)
 		delete(Room, wsid) // 删除房间
-		return 1
+		return 1           // 房间删除
 	}
 	return -1
 }
