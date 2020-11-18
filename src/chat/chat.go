@@ -16,11 +16,12 @@ import (
 
 // Connection 连接信息，房间
 type Connection struct {
-	Ws    *websocket.Conn
-	WsID  string
-	Users [2]data.User
-	Sc    chan []byte // 用于储存发送数据的chan
-	Data  *data.Data  // 当前正要发送的数据
+	ChatID int
+	Ws     *websocket.Conn
+	WsID   string
+	Users  [2]data.User
+	Sc     chan []byte // 用于储存发送数据的chan
+	Data   *data.Data  // 当前正要发送的数据
 }
 
 // --------对象---------
@@ -45,6 +46,9 @@ var Room map[string]*Connection
 // wsidMap key:user_id value:wsid【可存redis】
 var wsidMap map[int]string
 
+// chatID【可存redis】
+var chatID int
+
 // --------锁---------
 
 // lock 同步锁，防止同时操作上面变量
@@ -59,12 +63,19 @@ func init() {
 	WaitPool = make(map[int]*data.WaitUser)
 	Room = make(map[string]*Connection)
 	wsidMap = make(map[int]string)
+	chatID = 0
 
 }
 
 // sort 排序WaitPool
 func sort() {
 
+}
+
+// getChatid 获取数据库唯一id chatid
+func getChatid() int {
+	chatID++
+	return chatID
 }
 
 // getWsid 取得唯一的wsid，并使用双方id建立映射表
@@ -109,6 +120,7 @@ func Match(id int) (int, string) {
 			// 创建连接（房间）
 			wsid := getWsid(id, waitID)
 			Room[wsid] = &Connection{
+				ChatID: -1,
 				//Ws:    null,
 				WsID:  wsid,
 				Users: [2]data.User{user, data.GetUser(waitID)},
@@ -221,20 +233,21 @@ func Chat(id int, w http.ResponseWriter, r *http.Request) (int, string) {
 		// 房间不存在
 		return -1, ""
 	}
-	if Room[wsid].Ws != nil { // 一方已经开始聊天，ws连接已创建，无需创建
+	if Room[wsid].ChatID >= 0 { // 一方已经开始聊天，ws连接已创建，无需创建
 		fmt.Printf("%d WebScoket连接已经创建 %s\n", id, wsid)
-		return 0, wsid
+		return Room[wsid].ChatID, wsid
 	}
 
-	ws, err := Wu.Upgrade(w, r, nil)
-	if err != nil {
-		panic(err)
-	}
-	Room[wsid].Ws = ws
+	// ws, err := Wu.Upgrade(w, r, nil)
+	// if err != nil {
+	// 	panic(err)
+	// }
+	Room[wsid].ChatID = getChatid()
+	// Room[wsid].Ws = ws
 	Room[wsid].Data = &data.Data{}
 	Room[wsid].Sc = make(chan []byte, 256)
 	fmt.Printf("%d WebScoket连接创建 %s\n", id, wsid)
-	return 1, wsid
+	return Room[wsid].ChatID, wsid
 
 }
 

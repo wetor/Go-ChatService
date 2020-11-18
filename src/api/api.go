@@ -12,6 +12,11 @@ type userID struct {
 	ID int `json:"id"`
 }
 
+type chatConn struct {
+	WsID   string `json:"wsid"`
+	ChatID int    `json:"chatid"`
+}
+
 // Response 响应
 type Response struct {
 	Code int         `json:"code"`
@@ -101,7 +106,35 @@ func Cancel(w http.ResponseWriter, r *http.Request) {
 
 // Chat 开始聊天
 func Chat(w http.ResponseWriter, r *http.Request) {
-	fmt.Println(r.URL.Path)
+	var userID userID
+	if err := json.NewDecoder(r.Body).Decode(&userID); err != nil {
+		w.WriteHeader(http.StatusInternalServerError)
+		return
+	}
+	chatid, wsid := chat.Chat(userID.ID, w, r)
+
+	var resp Response
+	var jsonByte []byte
+	switch chatid {
+	case -1: // 房间不存在
+		resp = Response{
+			Code: 404,
+			Msg:  "room no exist",
+			Data: nil,
+		}
+		break
+	default: // 开始聊天
+		resp = Response{
+			Code: 200,
+			Msg:  "chat start",
+			Data: chatConn{WsID: wsid, ChatID: chatid},
+		}
+		break
+	}
+	jsonByte, _ = json.Marshal(resp)
+	w.Write(jsonByte)
+	return
+
 }
 
 // Report 举报此聊天用户
