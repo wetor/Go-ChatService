@@ -14,14 +14,14 @@ import (
 	"github.com/streadway/amqp"
 )
 
-// Connection 连接信息，房间
+// Connection 连接信息
 type Connection struct {
-	ChatID int
-	Ws     *websocket.Conn
-	WsID   string
-	Users  [2]data.User
-	Sc     chan []byte // 用于储存发送数据的chan
-	Data   *data.Data  // 当前正要发送的数据
+	//ChatID int
+	Ws *websocket.Conn
+	//WsID   string
+	//Users  [2]data.User
+	Sc   chan []byte // 用于储存发送数据的chan
+	Data *data.Data  // 当前正要发送的数据
 }
 
 // --------对象---------
@@ -33,15 +33,15 @@ var Rabbitmq *rabbitmq.RabbitMQ
 var flake *sonyflake.Sonyflake
 
 // Wu WebScoket.Upgrader
-var Wu *websocket.Upgrader
+var wu *websocket.Upgrader
 
 // --------储存---------
 
 // WaitPool 等待用户数组【可存redis】
-var WaitPool map[int]*data.WaitUser
+var waitPool map[int]*data.WaitUser
 
-// Room 连接信息数组【可存redis】
-var Room map[string]*Connection
+// Rooms 连接信息数组【可存redis】
+var Rooms map[string]*Room
 
 // wsidMap key:user_id value:wsid【可存redis】
 var wsidMap map[int]string
@@ -58,10 +58,10 @@ func init() {
 	fmt.Println("chat init")
 	Rabbitmq = rabbitmq.NewRabbitMQ("chat")
 	flake = sonyflake.NewSonyflake(sonyflake.Settings{})
-	Wu = &websocket.Upgrader{ReadBufferSize: 512, WriteBufferSize: 512, CheckOrigin: func(r *http.Request) bool { return true }}
+	wu = &websocket.Upgrader{ReadBufferSize: 512, WriteBufferSize: 512, CheckOrigin: func(r *http.Request) bool { return true }}
 
-	WaitPool = make(map[int]*data.WaitUser)
-	Room = make(map[string]*Connection)
+	waitPool = make(map[int]*data.WaitUser)
+	Rooms = make(map[string]*Room)
 	wsidMap = make(map[int]string)
 	chatID = 0
 
@@ -89,7 +89,7 @@ func getWsid(idA int, idB int) string {
 
 // updateTime 更新等待时间
 func updateTime(id int) {
-	WaitPool[id].Time++
+	waitPool[id].Time++
 }
 
 // match 根据标签的匹配算法
@@ -112,20 +112,17 @@ func Match(id int) (int, string) {
 	user := data.GetUser(id)
 	sort()      // 按照等待时间排序 TODO:未实现
 	lock.Lock() // 在等待队列中匹配时上锁
-	for waitID, waitUser := range WaitPool {
+	for waitID, waitUser := range waitPool {
 		if match(waitUser.User, user) {
 			fmt.Printf("%d 从WaitPool中匹配到 %d\n", id, waitID)
 
-			delete(WaitPool, waitID) // 从等待队列中删除
-			// 创建连接（房间）
+			delete(waitPool, waitID) // 从等待队列中删除
+			// 创建房间，暂时不初始化chan，因为可能会取消
 			wsid := getWsid(id, waitID)
-			Room[wsid] = &Connection{
-				ChatID: -1,
-				//Ws:    null,
-				WsID:  wsid,
-				Users: [2]data.User{user, data.GetUser(waitID)},
-				Sc:    make(chan []byte),
-				//Data:  null,
+			Rooms[wsid] = &Room{
+				ChatID: -1, //未初始化的房间为-1
+				WsID:   wsid,
+				Users:  [2]data.User{user, data.GetUser(waitID)},
 			}
 			lock.Unlock()
 			// 将匹配者、被匹配者、wsid和消息类型发送广播
@@ -148,7 +145,7 @@ func Match(id int) (int, string) {
 		Rabbitmq.PublishPub(string(jsonByte)) // 发送广播，id 匹配超时
 	}()
 	lock.Lock()                                        //上锁
-	WaitPool[id] = &data.WaitUser{User: user, Time: 0} // 加入到等待队列
+	waitPool[id] = &data.WaitUser{User: user, Time: 0} // 加入到等待队列
 	lock.Unlock()
 	var wsID string
 	wait := make(chan int)
@@ -159,7 +156,7 @@ func Match(id int) (int, string) {
 			if recv.ID == id {            // 被他人匹配到，或匹配被取消
 				if recv.Type == 1 {
 					lock.Lock()          // 上锁
-					delete(WaitPool, id) // 从等待队列中删除
+					delete(waitPool, id) // 从等待队列中删除
 					lock.Unlock()
 					wsID = recv.WsID
 					wait <- recv.MatchID // 被他人匹配到
@@ -191,9 +188,9 @@ func Cancel(id int) int {
 	lock.Lock() // 此方法上锁
 	defer lock.Unlock()
 	// id 在等待队列WaitPool中
-	for waitID := range WaitPool {
+	for waitID := range waitPool {
 		if waitID == id {
-			delete(WaitPool, waitID) // 从等待队列中删除
+			delete(waitPool, waitID) // 从等待队列中删除
 			jsonByte, _ := json.Marshal(data.MqUser{ID: waitID, Type: -1})
 			Rabbitmq.PublishPub(string(jsonByte)) // 发送广播，取消匹配waitID
 			return 0                              // 匹配取消
@@ -202,7 +199,7 @@ func Cancel(id int) int {
 
 	// 在Room中查找，若其中一人取消，则删除整个房间
 	wsid := ""
-	for wsID, conn := range Room {
+	for wsID, conn := range Rooms {
 		for _, user := range conn.Users {
 			if user.ID == id {
 				wsid = wsID
@@ -211,50 +208,119 @@ func Cancel(id int) int {
 		}
 	}
 	if wsid != "" {
-		delete(wsidMap, Room[wsid].Users[0].ID)
-		delete(wsidMap, Room[wsid].Users[1].ID)
-		delete(Room, wsid) // 删除房间
-		return 1           // 房间删除
+		delete(wsidMap, Rooms[wsid].Users[0].ID)
+		delete(wsidMap, Rooms[wsid].Users[1].ID)
+		delete(Rooms, wsid) // 删除房间
+		return 1            // 房间删除
 	}
 	return -1
 }
 
 // Chat 开始聊天
-func Chat(id int, w http.ResponseWriter, r *http.Request) (int, string) {
-	lock.Lock() // 此方法上锁
-	defer lock.Unlock()
+func Chat(id int) (int, string) {
+	lock.Lock()         // 此方法上锁
+	defer lock.Unlock() //解锁
 	wsid, ok := wsidMap[id]
 	if !ok {
 		// 房间不存在
 		return -1, ""
 	}
-	_, ok = Room[wsid]
+	_, ok = Rooms[wsid]
 	if !ok {
 		// 房间不存在
 		return -1, ""
 	}
-	if Room[wsid].ChatID >= 0 { // 一方已经开始聊天，ws连接已创建，无需创建
+	if Rooms[wsid].ChatID >= 0 { // 一方已经开始聊天，ws连接已创建，无需创建
 		fmt.Printf("%d WebScoket连接已经创建 %s\n", id, wsid)
-		return Room[wsid].ChatID, wsid
+		return Rooms[wsid].ChatID, wsid
 	}
 
-	// ws, err := Wu.Upgrade(w, r, nil)
-	// if err != nil {
-	// 	panic(err)
-	// }
-	Room[wsid].ChatID = getChatid()
-	// Room[wsid].Ws = ws
-	Room[wsid].Data = &data.Data{}
-	Room[wsid].Sc = make(chan []byte, 256)
+	// 初始化chan
+	Rooms[wsid].ChatID = getChatid()
+	Rooms[wsid].Flag = make(map[*Connection]bool)
+	Rooms[wsid].Conn = make(chan *Connection)
+	Rooms[wsid].Stream = make(chan []byte, 256)
+	go Rooms[wsid].Run()
 	fmt.Printf("%d WebScoket连接创建 %s\n", id, wsid)
-	return Room[wsid].ChatID, wsid
+	return Rooms[wsid].ChatID, wsid
+}
 
+// Webscoket webscoket接口实现
+func Webscoket(wsid string, w http.ResponseWriter, r *http.Request) {
+	ws, err := wu.Upgrade(w, r, nil)
+	if err != nil {
+		fmt.Println("ws创建失败 " + wsid)
+		return
+	}
+	conn := &Connection{
+		Ws:   ws,
+		Sc:   make(chan []byte, 256),
+		Data: &data.Data{},
+	}
+	Rooms[wsid].Conn <- conn
+	go conn.writer()
+	conn.reader(wsid)
+
+	// 退出
+	defer func() {
+		conn.Data.Type = "close"
+		conn.Data.Time = time.Now().Unix()
+		dataByte, _ := json.Marshal(conn.Data)
+		Rooms[wsid].Stream <- dataByte
+		Rooms[wsid].Conn <- conn
+	}()
 }
 
 func (c *Connection) writer() {
+	for message := range c.Sc {
+		c.Ws.WriteMessage(websocket.TextMessage, message)
+	}
 	c.Ws.Close()
 }
 
-func (c *Connection) reader() {
-	c.Ws.Close()
+// getUserIDbyWsid 获取房间的另一个人的id
+func getUserIDbyWsid(wsid string, id int) int {
+	for key, val := range wsidMap {
+		if val == wsid && key != id {
+			return key
+		}
+	}
+	return -1
+}
+
+func (c *Connection) reader(wsid string) {
+	for {
+		_, message, err := c.Ws.ReadMessage()
+		if err != nil {
+			Rooms[wsid].Conn <- c
+			break
+		}
+		json.Unmarshal(message, &c.Data)
+		rWsid, ok := wsidMap[c.Data.UserID]
+		fmt.Printf("userid:%d   wsid:%s\n", c.Data.UserID, rWsid)
+		if !ok || rWsid != wsid {
+			// 用户id和wsid不匹配
+			fmt.Println("用户id和wsid不匹配")
+			c.Data.Type = "close"
+		}
+		c.Data.SendID = getUserIDbyWsid(wsid, c.Data.UserID)
+		switch c.Data.Type {
+		case "ping":
+			c.Data.Type = "pong"
+			dataByte, _ := json.Marshal(c.Data)
+			Rooms[wsid].Stream <- dataByte
+		case "message":
+			c.Data.Type = "message"
+			dataByte, _ := json.Marshal(c.Data)
+			Rooms[wsid].Stream <- dataByte
+		case "close":
+			c.Data.Type = "close"
+			// user_list[wsid] = del(user_list[wsid], c.data.User)
+			dataByte, _ := json.Marshal(c.Data)
+			Rooms[wsid].Stream <- dataByte
+			Rooms[wsid].Conn <- c
+		default:
+			fmt.Println("========default================")
+		}
+	}
 }

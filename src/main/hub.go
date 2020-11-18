@@ -1,3 +1,4 @@
+// http://www.topgoer.com/网络编程/WebSocket编程.html
 package main
 
 import (
@@ -15,6 +16,8 @@ type hub struct {
 	u    chan *connection
 	wsid string
 }
+
+
 
 func init() {
 	fmt.Println("main init")

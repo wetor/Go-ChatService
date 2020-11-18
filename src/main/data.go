@@ -1,3 +1,4 @@
+// http://www.topgoer.com/网络编程/WebSocket编程.html
 package main
 
 type Data struct {

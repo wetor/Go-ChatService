@@ -6,6 +6,7 @@ import (
 	"encoding/json"
 	"fmt"
 	"net/http"
+	"strings"
 )
 
 type userID struct {
@@ -111,7 +112,7 @@ func Chat(w http.ResponseWriter, r *http.Request) {
 		w.WriteHeader(http.StatusInternalServerError)
 		return
 	}
-	chatid, wsid := chat.Chat(userID.ID, w, r)
+	chatid, wsid := chat.Chat(userID.ID)
 
 	var resp Response
 	var jsonByte []byte
@@ -144,5 +145,8 @@ func Report(w http.ResponseWriter, r *http.Request) {
 
 // Webscoket 聊天webscoket
 func Webscoket(w http.ResponseWriter, r *http.Request) {
-	fmt.Println(r.URL.Path)
+	wsid := r.URL.Path[strings.LastIndex(r.URL.Path, "/")+1:]
+	fmt.Println("Webscoket wsid:" + wsid)
+	chat.Webscoket(wsid, w, r)
+	return
 }

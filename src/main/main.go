@@ -51,9 +51,9 @@ func testws() {
 
 func main() {
 	fmt.Println("Main")
-	testws()
+	//testws()
 
-	return
+	//return
 	server := http.Server{
 		Addr: "127.0.0.1:8080",
 	}

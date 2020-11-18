@@ -14,9 +14,9 @@ type User struct {
 // Data 发送和接受的信息
 type Data struct {
 	IP      string `json:"ip"`
-	UserID  int    `json:"userid"`
-	FormID  int    `json:"formid"`
-	Time    int    `json:"time"`
+	UserID  int    `json:"userid"` // 发送者
+	SendID  int    `json:"sendid"` // 发送对象
+	Time    int64  `json:"time"`
 	Type    string `json:"type"`
 	Content string `json:"content"`
 }
