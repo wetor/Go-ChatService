@@ -5,36 +5,46 @@ import (
 	"fmt"
 )
 
-var h map[string]hub
+var h map[string]*hub
+var user_list map[string][]string
 
 type hub struct {
-	c map[*connection]bool
-	b chan []byte
-	r chan *connection
-	u chan *connection
+	c    map[*connection]bool
+	b    chan []byte
+	r    chan *connection
+	u    chan *connection
+	wsid string
 }
 
 func init() {
 	fmt.Println("main init")
-	h = make(map[string]hub)
-	h["test"] = hub{
-		c: make(map[*connection]bool),
-		u: make(chan *connection),
-		b: make(chan []byte),
-		r: make(chan *connection),
+	user_list = make(map[string][]string)
+
+	h = make(map[string]*hub)
+	h["test"] = &hub{
+		c:    make(map[*connection]bool),
+		u:    make(chan *connection),
+		b:    make(chan []byte),
+		r:    make(chan *connection),
+		wsid: "test",
 	}
-	h["test2"] = hub{
-		c: make(map[*connection]bool),
-		u: make(chan *connection),
-		b: make(chan []byte),
-		r: make(chan *connection),
+	user_list["test"] = []string{}
+	h["test2"] = &hub{
+		c:    make(map[*connection]bool),
+		u:    make(chan *connection),
+		b:    make(chan []byte),
+		r:    make(chan *connection),
+		wsid: "test2",
 	}
-	h["test3"] = hub{
-		c: make(map[*connection]bool),
-		u: make(chan *connection),
-		b: make(chan []byte),
-		r: make(chan *connection),
+	user_list["test2"] = []string{}
+	h["test3"] = &hub{
+		c:    make(map[*connection]bool),
+		u:    make(chan *connection),
+		b:    make(chan []byte),
+		r:    make(chan *connection),
+		wsid: "test3",
 	}
+	user_list["test3"] = []string{}
 }
 
 func (h *hub) run() {
@@ -44,7 +54,7 @@ func (h *hub) run() {
 			h.c[c] = true
 			c.data.Ip = c.ws.RemoteAddr().String()
 			c.data.Type = "handshake"
-			c.data.UserList = user_list
+			c.data.UserList = user_list[h.wsid]
 			data_b, _ := json.Marshal(c.data)
 			c.sc <- data_b
 		case c := <-h.u:

@@ -20,9 +20,10 @@ var wu = &websocket.Upgrader{ReadBufferSize: 512,
 
 func myws(w http.ResponseWriter, r *http.Request) {
 	wsid := r.URL.Path[strings.LastIndex(r.URL.Path, "/")+1:]
-	fmt.Println(wsid)
+	fmt.Println("myws wsid:" + wsid)
 	ws, err := wu.Upgrade(w, r, nil)
 	if err != nil {
+		fmt.Println("ws创建失败")
 		return
 	}
 	c := &connection{sc: make(chan []byte, 256), ws: ws, data: &Data{}}
@@ -31,8 +32,8 @@ func myws(w http.ResponseWriter, r *http.Request) {
 	c.reader(wsid)
 	defer func() {
 		c.data.Type = "logout"
-		user_list = del(user_list, c.data.User)
-		c.data.UserList = user_list
+		user_list[wsid] = del(user_list[wsid], c.data.User)
+		c.data.UserList = user_list[wsid]
 		c.data.Content = c.data.User
 		data_b, _ := json.Marshal(c.data)
 		h[wsid].b <- data_b
@@ -47,8 +48,6 @@ func (c *connection) writer() {
 	c.ws.Close()
 }
 
-var user_list = []string{}
-
 func (c *connection) reader(wsid string) {
 	for {
 		_, message, err := c.ws.ReadMessage()
@@ -61,8 +60,8 @@ func (c *connection) reader(wsid string) {
 		case "login":
 			c.data.User = c.data.Content
 			c.data.From = c.data.User
-			user_list = append(user_list, c.data.User)
-			c.data.UserList = user_list
+			user_list[wsid] = append(user_list[wsid], c.data.User)
+			c.data.UserList = user_list[wsid]
 			data_b, _ := json.Marshal(c.data)
 			h[wsid].b <- data_b
 		case "user":
@@ -71,7 +70,7 @@ func (c *connection) reader(wsid string) {
 			h[wsid].b <- data_b
 		case "logout":
 			c.data.Type = "logout"
-			user_list = del(user_list, c.data.User)
+			user_list[wsid] = del(user_list[wsid], c.data.User)
 			data_b, _ := json.Marshal(c.data)
 			h[wsid].b <- data_b
 			h[wsid].r <- c

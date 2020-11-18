@@ -37,7 +37,8 @@ func test() {
 }
 
 func testws() {
-	for _, value := range h {
+	for key, value := range h {
+		fmt.Println(key)
 		go value.run()
 	}
 

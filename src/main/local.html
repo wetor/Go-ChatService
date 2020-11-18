@@ -39,40 +39,40 @@
         wsid = wsid_box.value;
         ws = new WebSocket("ws://127.0.0.1:8080/ws/"+wsid);
 
-            ws.onopen = function () {
-        var data = "系统消息：建立连接成功";
-        listMsg(data);
-    };
+        ws.onopen = function () {
+            var data = "系统消息：建立连接成功";
+            listMsg(data);
+        };
     
-    ws.onmessage = function (e) {
-        var msg = JSON.parse(e.data);
-        var sender, user_name, name_list, change_type;
-        switch (msg.type) {
-            case 'system':
-                sender = '系统消息: ';
-                break;
-            case 'user':
-                sender = msg.from + ': ';
-                break;
-            case 'handshake':
-                var user_info = {'type': 'login', 'content': uname};
-                sendMsg(user_info);
-                return;
-            case 'login':
-            case 'logout':
-                user_name = msg.content;
-                name_list = msg.user_list;
-                change_type = msg.type;
-                dealUser(user_name, change_type, name_list);
-                return;
-        }
-        var data = sender + msg.content;
-        listMsg(data);
-    };
-    ws.onerror = function () {
-        var data = "系统消息 : 出错了,请退出重试.";
-        listMsg(data);
-    };
+        ws.onmessage = function (e) {
+            var msg = JSON.parse(e.data);
+            var sender, user_name, name_list, change_type;
+            switch (msg.type) {
+                case 'system':
+                    sender = '系统消息: ';
+                    break;
+                case 'user':
+                    sender = msg.from + ': ';
+                    break;
+                case 'handshake':
+                    var user_info = {'type': 'login', 'content': uname};
+                    sendMsg(user_info);
+                    return;
+                case 'login':
+                case 'logout':
+                    user_name = msg.content;
+                    name_list = msg.user_list;
+                    change_type = msg.type;
+                    dealUser(user_name, change_type, name_list);
+                    return;
+            }
+            var data = sender + msg.content;
+            listMsg(data);
+        };
+        ws.onerror = function () {
+            var data = "系统消息 : 出错了,请退出重试.";
+            listMsg(data);
+        };
     }
 
 
