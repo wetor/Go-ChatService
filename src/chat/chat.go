@@ -21,7 +21,7 @@ type Connection struct {
 	//WsID   string
 	//Users  [2]data.User
 	Sc   chan []byte // 用于储存发送数据的chan
-	Data *data.Data  // 当前正要发送的数据
+	Data *WsData     // 当前正要发送的数据
 }
 
 // --------对象---------
@@ -122,7 +122,7 @@ func Match(id int) (int, string) {
 			Rooms[wsid] = &Room{
 				ChatID: -1, //未初始化的房间为-1
 				WsID:   wsid,
-				Users:  [2]data.User{user, data.GetUser(waitID)},
+				Users:  []data.User{user, data.GetUser(waitID)},
 			}
 			lock.Unlock()
 			// 将匹配者、被匹配者、wsid和消息类型发送广播
@@ -237,7 +237,7 @@ func Chat(id int) (int, string) {
 
 	// 初始化chan
 	Rooms[wsid].ChatID = getChatid()
-	Rooms[wsid].Flag = make(map[*Connection]bool)
+	Rooms[wsid].Conns = make([]*Connection, 0)
 	Rooms[wsid].Conn = make(chan *Connection)
 	Rooms[wsid].Stream = make(chan []byte, 256)
 	go Rooms[wsid].Run()
@@ -247,6 +247,13 @@ func Chat(id int) (int, string) {
 
 // Webscoket webscoket接口实现
 func Webscoket(wsid string, w http.ResponseWriter, r *http.Request) {
+	_, ok := Rooms[wsid]
+	if !ok {
+		// 房间不存在
+		fmt.Println("房间不存在，可能对方已取消")
+		return
+	}
+
 	ws, err := wu.Upgrade(w, r, nil)
 	if err != nil {
 		fmt.Println("ws创建失败 " + wsid)
@@ -255,27 +262,56 @@ func Webscoket(wsid string, w http.ResponseWriter, r *http.Request) {
 	conn := &Connection{
 		Ws:   ws,
 		Sc:   make(chan []byte, 256),
-		Data: &data.Data{},
+		Data: &WsData{},
 	}
+	conn.Data.Type = "start"
+	conn.Data.Time = time.Now().Unix()
 	Rooms[wsid].Conn <- conn
-	go conn.writer()
+	go conn.writer(wsid)
 	conn.reader(wsid)
 
-	// 退出
-	defer func() {
-		conn.Data.Type = "close"
-		conn.Data.Time = time.Now().Unix()
-		dataByte, _ := json.Marshal(conn.Data)
-		Rooms[wsid].Stream <- dataByte
-		Rooms[wsid].Conn <- conn
+	close := make(chan bool)
+	go func() {
+		for {
+			val, ok := Rooms[wsid]
+			if ok { // 判断房间是否已经被删除
+				if val.ChatID == -3 {
+					break
+				}
+			} else {
+				break
+			}
+		}
+		close <- true
 	}()
+	<-close
+	// 退出
+	_, ok = Rooms[wsid]
+	if ok { // 双方中的一方删除房间
+		delete(wsidMap, Rooms[wsid].Users[0].ID)
+		delete(wsidMap, Rooms[wsid].Users[1].ID)
+		delete(Rooms, wsid)
+	}
+	fmt.Println("关闭连接 Webscoket")
+
 }
 
-func (c *Connection) writer() {
+func (c *Connection) writer(wsid string) {
 	for message := range c.Sc {
 		c.Ws.WriteMessage(websocket.TextMessage, message)
+		val, ok := Rooms[wsid]
+		if ok { // 判断房间是否已经被删除
+			if val.ChatID == -2 {
+				break
+			}
+		} else {
+			return
+		}
 	}
-	c.Ws.Close()
+	lock.Lock()
+	Rooms[wsid].ChatID = -3 //-3 关闭writer
+	lock.Unlock()
+	fmt.Println("关闭连接 writer")
 }
 
 // getUserIDbyWsid 获取房间的另一个人的id
@@ -290,20 +326,25 @@ func getUserIDbyWsid(wsid string, id int) int {
 
 func (c *Connection) reader(wsid string) {
 	for {
-		_, message, err := c.Ws.ReadMessage()
-		if err != nil {
-			Rooms[wsid].Conn <- c
+		_, ok := Rooms[wsid]
+		if !ok { // 判断房间是否已经被删除
 			break
 		}
-		json.Unmarshal(message, &c.Data)
+		_, message, err := c.Ws.ReadMessage()
+		if err != nil {
+			break
+		}
+		json.Unmarshal(message, c.Data)
+
 		rWsid, ok := wsidMap[c.Data.UserID]
-		fmt.Printf("userid:%d   wsid:%s\n", c.Data.UserID, rWsid)
+
 		if !ok || rWsid != wsid {
 			// 用户id和wsid不匹配
-			fmt.Println("用户id和wsid不匹配")
+			fmt.Printf("用户id和wsid不匹配  userid:%d   wsid:%s\n", c.Data.UserID, rWsid)
 			c.Data.Type = "close"
 		}
-		c.Data.SendID = getUserIDbyWsid(wsid, c.Data.UserID)
+
+		c.Data.Time = time.Now().Unix()
 		switch c.Data.Type {
 		case "ping":
 			c.Data.Type = "pong"
@@ -312,15 +353,20 @@ func (c *Connection) reader(wsid string) {
 		case "message":
 			c.Data.Type = "message"
 			dataByte, _ := json.Marshal(c.Data)
+			// data := toData(&wsdata, c.Ws.RemoteAddr().String(), getUserIDbyWsid(wsid, wsdata.UserID))
+			// data储存到Redis作为聊天记录
 			Rooms[wsid].Stream <- dataByte
 		case "close":
 			c.Data.Type = "close"
-			// user_list[wsid] = del(user_list[wsid], c.data.User)
 			dataByte, _ := json.Marshal(c.Data)
 			Rooms[wsid].Stream <- dataByte
 			Rooms[wsid].Conn <- c
-		default:
-			fmt.Println("========default================")
+
+			lock.Lock()
+			Rooms[wsid].ChatID = -2 //-2 关闭reader
+			lock.Unlock()
+			fmt.Println("关闭连接 reader")
+			return
 		}
 	}
 }

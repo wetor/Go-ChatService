@@ -36,19 +36,6 @@ func test() {
 	fmt.Println(">>end")
 }
 
-func testws() {
-	for key, value := range h {
-		fmt.Println(key)
-		go value.run()
-	}
-
-	server := http.Server{
-		Addr: "127.0.0.1:8080",
-	}
-	http.HandleFunc("/ws/", myws)
-	server.ListenAndServe()
-}
-
 func main() {
 	fmt.Println("Main")
 	//testws()

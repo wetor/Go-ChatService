@@ -1,0 +1,109 @@
+<!--
+ * @Author: your name
+ * @Date: 2019-10-13 17:01:53
+ * @LastEditTime: 2020-11-07 17:36:29
+ * @LastEditors: Please set LastEditors
+ * @Description: In User Settings Edit
+ * @FilePath: \src\后端学习\聊天服务器\index2.html
+-->
+<html>
+<head></head>
+<style type="text/css">
+</style>
+<body>
+    <script type="text/javascript">
+        var sock = null;
+        var wsid = ""
+        var wsuri = "ws://127.0.0.1:8080/chat/webscoket/"+wsid;
+        var user = 0
+        
+        var msg = " "
+        var redis  = 0
+        function conn(){
+            wsid = document.getElementById('wsid').value
+            wsuri = "ws://127.0.0.1:8080/chat/webscoket/"+wsid;
+            sock = new WebSocket(wsuri);
+
+            sock.onopen = function() {
+                user = parseInt(document.getElementById('userName').value)
+                sock.send(
+                    JSON.stringify({
+                        userid: user,
+                        type: "ping",
+                        data: null
+                    }
+                ));
+                console.log("已连接");
+            }
+
+            sock.onclose = function(e) {
+                console.log("connection closed (" + e.code + ")");
+            }
+
+            sock.onmessage = function(e) {
+                var data = JSON.parse(e.data);
+                var time = new Date(data.time*1000);
+                switch(data.type){
+                    case "pong":
+                        if(data.userid == user){
+                            console.log(time + " pong!");
+                        }
+                        break
+                    case "start":
+                        document.getElementById("list").innerHTML += data.userid + "&nbsp;" + time + ":&nbsp;&nbsp;开始聊天"+"<br>";
+                        break
+                    case "message":
+                        document.getElementById("list").innerHTML += data.userid + "&nbsp;" +time + ":&nbsp;&nbsp;"+data.data+"<br>";
+                        break
+                    case "close":
+                        document.getElementById("list").innerHTML += data.userid + "&nbsp;" +time + ":&nbsp;&nbsp;结束聊天"+"<br>";
+                        sock.close()
+                        break  
+                }
+            }
+        }
+
+        function send() {
+            user = parseInt(document.getElementById('userName').value)
+            msg = document.getElementById('message').value;
+            sock.send(
+                JSON.stringify({
+                    userid: user,
+                    type: "message",
+                    data: msg
+                }
+            ));
+        };
+        function exitws() {
+            user = parseInt(document.getElementById('userName').value)
+            sock.send(
+                JSON.stringify({
+                    userid: user,
+                    type: "close",
+                    data: null
+                }
+            ));
+        };
+        function inputUser(){
+            user = parseInt(document.getElementById('userName').value)
+        }
+        function inputWsid(){
+            wsid = document.getElementById('wsid').value
+        }
+    </script>
+    <div id="list" style="height: 300px;overflow-y: scroll;border: 1px solid #CCC;"></div>
+
+    <div id="div1" >
+
+            <p>
+                <input id="wsid" type="text"  onkeydown="inputWsid()"><button onclick="conn();">连接</button><br>
+                <input id="userName" type="text"  onkeydown="inputUser()">
+                <input id="message" type="text" style="height: 30px; width: 600px;" placeholder="输入聊天内容">
+            </p>
+        
+        <button onclick="send();">发送消息</button><br><br>
+        <button onclick="exitws();">结束聊天</button>
+    </div>
+
+</body>
+</html>
