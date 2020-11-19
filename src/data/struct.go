@@ -23,8 +23,8 @@ type Data struct {
 
 // WaitUser 正在等待用户
 type WaitUser struct {
-	User User `json:"user"`
-	Time int  `json:"time"` // 已经等待的时间
+	User User
+	Time int // 已经等待的时间，单位：查询次数
 }
 
 // MqUser RabbitMQ结构
