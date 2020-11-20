@@ -3,6 +3,7 @@ package main
 import (
 	"ChatService/src/api"
 	"ChatService/src/chat"
+	"ChatService/src/redis"
 	"fmt"
 	"net/http"
 	"time"
@@ -36,9 +37,18 @@ func test() {
 	fmt.Println(">>end")
 }
 
+func testRedis() {
+	Redis := redis.NewRedisPool()
+	defer Redis.Close()
+	Redis.Set("name:json:a2", "123456")
+	str := Redis.Get("name:json:a2")
+
+	fmt.Println(str)
+}
+
 func main() {
 	fmt.Println("Main")
-	//testws()
+	//testRedis()
 
 	//return
 	server := http.Server{

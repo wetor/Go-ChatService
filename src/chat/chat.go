@@ -3,6 +3,7 @@ package chat
 import (
 	"ChatService/src/data"
 	"ChatService/src/rabbitmq"
+	"ChatService/src/redis"
 	"encoding/json"
 	"fmt"
 	"net/http"
@@ -29,6 +30,9 @@ type Connection struct {
 
 // Rabbitmq 实例
 var Rabbitmq *rabbitmq.RabbitMQ
+
+// Redis 实例
+var Redis *redis.RedisPool
 
 // wsid生成器
 var flake *sonyflake.Sonyflake
@@ -64,6 +68,7 @@ var lock sync.Mutex
 func init() {
 	fmt.Println("chat init")
 	Rabbitmq = rabbitmq.NewRabbitMQ("chat")
+	Redis = redis.NewRedisPool()
 	flake = sonyflake.NewSonyflake(sonyflake.Settings{})
 	wu = &websocket.Upgrader{ReadBufferSize: 512, WriteBufferSize: 512, CheckOrigin: func(r *http.Request) bool { return true }}
 
@@ -372,7 +377,9 @@ func (c *Connection) reader(wsid string) {
 		case "message":
 			c.Data.Type = "message"
 			dataByte, _ := json.Marshal(c.Data)
-			// data := toData(&wsdata, c.Ws.RemoteAddr().String(), getOtherID(wsid, wsdata.UserID))
+
+			dataByte2, _ := json.Marshal(toData(c.Data, c.Ws.RemoteAddr().String(), getOtherID(wsid, c.Data.UserID)))
+			Redis.SetList("chat:history:"+wsid, dataByte2)
 			// data储存到Redis作为聊天记录
 			Rooms[wsid].Stream <- dataByte
 		case "close":

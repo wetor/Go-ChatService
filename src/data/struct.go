@@ -21,6 +21,10 @@ type Data struct {
 	Content string `json:"content"`
 }
 
+// Chat 一个聊天记录
+type Chat struct {
+}
+
 // WaitUser 正在等待用户
 type WaitUser struct {
 	User User
